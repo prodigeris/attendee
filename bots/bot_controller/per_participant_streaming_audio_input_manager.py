@@ -114,14 +114,24 @@ class PerParticipantStreamingAudioInputManager:
     def create_streaming_transcriber(self, speaker_id, metadata):
         if self.transcription_provider == TranscriptionProviders.DEEPGRAM:
             metadata_list = [f"{key}:{value}" for key, value in metadata.items()] if metadata else None
+            callback = self.bot.transcription_settings.deepgram_callback()
+
+            # Without a callback URL, Attendee saves the utterances itself, as for Kyutai.
+            def deepgram_save_utterance_callback(transcript_text, transcriber_metadata=None):
+                duration_ms = transcriber_metadata.get("duration_ms", 0) if transcriber_metadata else 0
+                self.utterance_handler.handle_utterance(speaker_id=speaker_id, transcript_text=transcript_text, metadata=transcriber_metadata, duration_ms=duration_ms)
+
             return DeepgramStreamingTranscriber(
                 deepgram_api_key=self.deepgram_api_key,
                 interim_results=True,
                 language=self.bot.transcription_settings.deepgram_language(),
                 sample_rate=self.sample_rate,
                 model=self.bot.transcription_settings.deepgram_model(),
-                callback=self.bot.transcription_settings.deepgram_callback(),
+                callback=callback,
                 metadata=metadata_list,
+                keyterms=self.bot.transcription_settings.deepgram_keyterms(),
+                endpointing=self.bot.transcription_settings.deepgram_endpointing(),
+                save_utterance_callback=None if callback else deepgram_save_utterance_callback,
                 redaction_settings=self.bot.transcription_settings.deepgram_redaction_settings(),
                 replace_settings=self.bot.transcription_settings.deepgram_replace_settings(),
                 mip_opt_out=self.bot.transcription_settings.deepgram_mip_opt_out(),

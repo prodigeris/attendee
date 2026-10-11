@@ -807,7 +807,10 @@ class TranscriptionSettings:
         return self._settings.get("deepgram", {}).get("keywords", None)
 
     def deepgram_use_streaming(self):
-        return self.deepgram_callback() is not None
+        return self.deepgram_callback() is not None or self._settings.get("deepgram", {}).get("streaming", False) is True
+
+    def deepgram_endpointing(self):
+        return self._settings.get("deepgram", {}).get("endpointing", None)
 
     def deepgram_model(self):
         model_from_settings = self._settings.get("deepgram", {}).get("model", None)
