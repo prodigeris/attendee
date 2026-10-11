@@ -5,8 +5,8 @@ from bots.transcription_providers.deepgram import deepgram_streaming_transcriber
 from bots.transcription_providers.deepgram.deepgram_streaming_transcriber import DeepgramStreamingTranscriber
 
 
-def result(text, start, duration, is_final=True, speech_final=False):
-    return SimpleNamespace(channel=SimpleNamespace(alternatives=[SimpleNamespace(transcript=text)]), start=start, duration=duration, is_final=is_final, speech_final=speech_final)
+def result(text, start, duration, is_final=True, speech_final=False, from_finalize=False):
+    return SimpleNamespace(channel=SimpleNamespace(alternatives=[SimpleNamespace(transcript=text)]), start=start, duration=duration, is_final=is_final, speech_final=speech_final, from_finalize=from_finalize)
 
 
 class DeepgramStreamingTranscriberTest(TestCase):
@@ -49,6 +49,20 @@ class DeepgramStreamingTranscriberTest(TestCase):
         self.saved()
         connection.finish.assert_called_once()
         self.assertEqual(saved, ["Let's go with Cedar"])
+
+    def test_a_quiet_speaker_is_finalized_once_and_the_utterance_saved(self):
+        saved = []
+        transcriber, connection = self.make(save_utterance_callback=lambda text, meta: saved.append(text))
+        transcriber.send(b"\0\0")
+        transcriber.finalize_if_quiet()
+        connection.finalize.assert_not_called()  # nothing heard yet
+        transcriber.handle_result(result("Do we have a date for the founder", 0.5, 2.0, is_final=False))
+        transcriber.finalize_if_quiet()
+        transcriber.finalize_if_quiet()
+        connection.finalize.assert_called_once()
+        transcriber.handle_result(result("Do we have a date for the founder interview?", 0.5, 2.4, from_finalize=True))
+        self.saved()
+        self.assertEqual(saved, ["Do we have a date for the founder interview?"])
 
     def test_with_a_callback_url_deepgram_delivers_and_nothing_is_saved_here(self):
         transcriber, _ = self.make()
