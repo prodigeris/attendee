@@ -64,6 +64,27 @@ class DeepgramStreamingTranscriberTest(TestCase):
         self.saved()
         self.assertEqual(saved, ["Do we have a date for the founder interview?"])
 
+    def test_partial_text_while_speaking_is_throttled_and_stops_at_the_end(self):
+        partials, saved = [], []
+        transcriber, _ = self.make(save_utterance_callback=lambda text, meta: saved.append(text), partial_callback=lambda text, meta: partials.append((text, meta)))
+        with mock.patch.object(module.time, "time", return_value=1000.0):
+            transcriber.send(b"\0\0")
+        clock = [1000.0]
+        with mock.patch.object(module.time, "time", side_effect=lambda: clock[0]):
+            transcriber.handle_result(result("Gus,", 1.0, 0.4, is_final=False))
+            clock[0] += 0.1
+            transcriber.handle_result(result("Gus, is", 1.0, 0.6, is_final=False))  # within 250 ms: skipped
+            clock[0] += 0.3
+            transcriber.handle_result(result("Gus,", 1.0, 0.4))  # final piece: the text so far
+            clock[0] += 0.3
+            transcriber.handle_result(result("is Willow's budget", 1.4, 1.0, is_final=False))
+            clock[0] += 0.3
+            transcriber.handle_result(result("is Willow's budget approved?", 1.4, 1.6, speech_final=True))
+        self.saved()
+        self.assertEqual([p[0] for p in partials], ["Gus,", "Gus, is Willow's budget"])
+        self.assertEqual(partials[0][1], {"timestamp_ms": 1001000})
+        self.assertEqual(saved, ["Gus, is Willow's budget approved?"])
+
     def test_with_a_callback_url_deepgram_delivers_and_nothing_is_saved_here(self):
         transcriber, _ = self.make()
         transcriber.handle_result(result("Hello", 0.0, 0.5, speech_final=True))
@@ -86,6 +107,16 @@ class DeepgramStreamingSettingsTest(TestCase):
 
         from bots.serializers import TRANSCRIPTION_SETTINGS_SCHEMA
 
-        jsonschema.validate({"deepgram": {"streaming": True, "endpointing": 300, "keyterms": ["Gus"], "language": "en"}}, TRANSCRIPTION_SETTINGS_SCHEMA)
+        jsonschema.validate({"deepgram": {"streaming": True, "endpointing": 300, "partial_webhooks": True, "keyterms": ["Gus"], "language": "en"}}, TRANSCRIPTION_SETTINGS_SCHEMA)
         with self.assertRaises(jsonschema.ValidationError):
             jsonschema.validate({"deepgram": {"endpointing": 5}}, TRANSCRIPTION_SETTINGS_SCHEMA)
+
+
+class PartialTranscriptWebhookTest(TestCase):
+    def test_trigger_code_and_payload(self):
+        from bots.models import WebhookTriggerTypes
+        from bots.webhook_payloads import partial_transcript_webhook_payload
+
+        self.assertEqual(WebhookTriggerTypes.api_code_to_trigger_type("transcript.partial"), WebhookTriggerTypes.TRANSCRIPT_PARTIAL)
+        payload = partial_transcript_webhook_payload({"participant_full_name": "Ana", "participant_uuid": "u1", "participant_user_uuid": None, "participant_is_host": True}, "Gus, is", 123)
+        self.assertEqual(payload, {"speaker_name": "Ana", "speaker_uuid": "u1", "speaker_user_uuid": None, "speaker_is_host": True, "timestamp_ms": 123, "transcription": {"transcript": "Gus, is"}})

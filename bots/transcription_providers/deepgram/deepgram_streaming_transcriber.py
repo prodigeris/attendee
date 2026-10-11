@@ -49,12 +49,15 @@ class DeepgramStreamingTranscriber:
     Deepgram marks the end of speech (speech_final).
     """
 
-    def __init__(self, *, deepgram_api_key, interim_results, language, model, sample_rate, metadata, callback, redaction_settings=None, replace_settings=None, mip_opt_out=None, keyterms=None, endpointing=None, save_utterance_callback=None):
+    def __init__(self, *, deepgram_api_key, interim_results, language, model, sample_rate, metadata, callback, redaction_settings=None, replace_settings=None, mip_opt_out=None, keyterms=None, endpointing=None, save_utterance_callback=None, partial_callback=None):
         # Configure the DeepgramClientOptions to enable KeepAlive for maintaining the WebSocket connection (only if necessary to your scenario)
         config = DeepgramClientOptions(options={"keepalive": "true"})
 
         self.last_send_time = time.time()
         self.save_utterance_callback = save_utterance_callback
+        # Called with the utterance's text so far while it is being spoken (throttled).
+        self.partial_callback = partial_callback
+        self.last_partial = ("", 0.0)
         # Wall-clock time of the first audio sent; Deepgram's result times are offsets from it.
         self.stream_start_time = None
         self.pending_text = []
@@ -116,6 +119,25 @@ class DeepgramStreamingTranscriber:
             self.pending_text.append(text)
         if getattr(result, "speech_final", False) or getattr(result, "from_finalize", False):
             self.flush()
+            self.last_partial = ("", 0.0)
+        elif text:
+            self.emit_partial(" ".join(self.pending_text if getattr(result, "is_final", False) else [*self.pending_text, text]), result.start)
+
+    PARTIAL_INTERVAL_SECONDS = 0.25
+
+    def emit_partial(self, text, start):
+        if not self.partial_callback or not text:
+            return
+        last_text, last_at = self.last_partial
+        now = time.time()
+        if text == last_text or now - last_at < self.PARTIAL_INTERVAL_SECONDS:
+            return
+        self.last_partial = (text, now)
+        anchor = self.stream_start_time if self.stream_start_time is not None else now
+        first = self.pending_start if self.pending_start is not None else start
+        callback = self.partial_callback
+        timestamp_ms = int(round((anchor + first) * 1000))
+        _enqueue_save(lambda: callback(text, {"timestamp_ms": timestamp_ms}))
 
     def finalize_if_quiet(self):
         """

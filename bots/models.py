@@ -812,6 +812,9 @@ class TranscriptionSettings:
     def deepgram_endpointing(self):
         return self._settings.get("deepgram", {}).get("endpointing", None)
 
+    def deepgram_partial_webhooks(self):
+        return self._settings.get("deepgram", {}).get("partial_webhooks", False) is True
+
     def deepgram_model(self):
         model_from_settings = self._settings.get("deepgram", {}).get("model", None)
         if model_from_settings:
@@ -3209,6 +3212,7 @@ class WebhookTriggerTypes(models.IntegerChoices):
     ZOOM_OAUTH_CONNECTION_STATE_CHANGE = 8, "Zoom OAuth Connection State Change"
     BOT_LOGS_UPDATE = 9, "Bot Logs Update"
     PARTICIPANT_EVENTS_SPEECH_START_STOP = 10, "Participant Speech Start/Stop"
+    TRANSCRIPT_PARTIAL = 11, "Transcript Partial"
     # add other event types here
 
     @classmethod
@@ -3225,6 +3229,7 @@ class WebhookTriggerTypes(models.IntegerChoices):
             cls.ZOOM_OAUTH_CONNECTION_STATE_CHANGE: "zoom_oauth_connection.state_change",
             cls.BOT_LOGS_UPDATE: "bot_logs.update",
             cls.PARTICIPANT_EVENTS_SPEECH_START_STOP: "participant_events.speech_start_stop",
+            cls.TRANSCRIPT_PARTIAL: "transcript.partial",
         }
 
     @classmethod
