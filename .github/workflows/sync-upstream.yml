@@ -1,0 +1,39 @@
+# Keeps the `gus` branch (upstream main + Gus's patches) on top of attendee-labs/attendee.
+# Weekly, or by hand: rebase onto upstream main and push; on a conflict, open an issue instead.
+name: Sync with upstream
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  rebase:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: gus
+          fetch-depth: 0
+      - name: Rebase onto upstream main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name "gus-sync"
+          git config user.email "gus-sync@users.noreply.github.com"
+          git remote add upstream https://github.com/attendee-labs/attendee.git
+          git fetch upstream main
+          if git merge-base --is-ancestor upstream/main HEAD; then echo "Already up to date."; exit 0; fi
+          if git rebase upstream/main; then
+            git push --force-with-lease origin gus
+            echo "Rebased gus onto $(git rev-parse --short upstream/main)."
+          else
+            git rebase --abort
+            gh issue create --title "gus: rebase onto upstream failed ($(date +%F))" \
+              --body "The weekly rebase of \`gus\` onto attendee-labs/attendee main hit a conflict. Rebase by hand: \`git fetch upstream && git rebase upstream/main\`, run the Deepgram streaming tests, push."
+            exit 1
+          fi
