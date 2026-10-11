@@ -224,11 +224,16 @@ class PerParticipantStreamingAudioInputManager:
             if streaming_transcriber:
                 streaming_transcriber.send(chunk_bytes)
 
+    # A participant quiet this long has finished speaking: Deepgram is asked for its final words.
+    QUIET_FINALIZE_SECONDS = 0.6
+
     def monitor_transcription(self):
         speakers_to_remove = []
         streaming_transcriber_keys = list(self.streaming_transcribers.keys())
         for speaker_id in streaming_transcriber_keys:
             streaming_transcriber = self.streaming_transcribers[speaker_id]
+            if hasattr(streaming_transcriber, "finalize_if_quiet") and time.time() - self.last_nonsilent_audio_time.get(speaker_id, time.time()) > self.QUIET_FINALIZE_SECONDS:
+                streaming_transcriber.finalize_if_quiet()
             silence_limit = self.SILENCE_DURATION_LIMIT
 
             # Defensive: ensure we have timing data for this speaker

@@ -60,6 +60,8 @@ class DeepgramStreamingTranscriber:
         self.pending_text = []
         self.pending_start = None
         self.pending_end = None
+        # Text heard since the last Finalize request (see finalize_if_quiet).
+        self.heard_since_finalize = False
 
         # Create a websocket connection using the DEEPGRAM_API_KEY from environment variables
         self.deepgram = DeepgramClient(deepgram_api_key, config)
@@ -105,13 +107,28 @@ class DeepgramStreamingTranscriber:
         if not self.save_utterance_callback:
             return
         text = result.channel.alternatives[0].transcript
+        if text:
+            self.heard_since_finalize = True
         if getattr(result, "is_final", False) and text:
             if self.pending_start is None:
                 self.pending_start = result.start
             self.pending_end = result.start + result.duration
             self.pending_text.append(text)
-        if getattr(result, "speech_final", False):
+        if getattr(result, "speech_final", False) or getattr(result, "from_finalize", False):
             self.flush()
+
+    def finalize_if_quiet(self):
+        """
+        The participant went quiet. Meet may stop sending their audio, so Deepgram
+        never hears the silence that ends the utterance; ask it to finalize now.
+        """
+        if not self.save_utterance_callback or not self.heard_since_finalize:
+            return
+        self.heard_since_finalize = False
+        try:
+            self.dg_connection.finalize()
+        except Exception as e:
+            logger.warning(f"Deepgram finalize failed: {e}")
 
     def flush(self):
         if not self.save_utterance_callback or not self.pending_text:
