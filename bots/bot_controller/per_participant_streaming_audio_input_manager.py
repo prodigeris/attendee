@@ -7,6 +7,7 @@ import webrtcvad
 from bots.models import (
     Credentials,
     TranscriptionProviders,
+    WebhookTriggerTypes,
 )
 from bots.transcription_providers.deepgram.deepgram_streaming_transcriber import (  # noqa: E501
     DeepgramStreamingTranscriber,
@@ -15,6 +16,8 @@ from bots.transcription_providers.kyutai.kyutai_streaming_transcriber import (  
     KyutaiStreamingTranscriber,
 )
 from bots.transcription_providers.utterance_handler import DefaultUtteranceHandler
+from bots.webhook_payloads import partial_transcript_webhook_payload
+from bots.webhook_utils import trigger_webhook
 
 logger = logging.getLogger(__name__)
 
@@ -121,6 +124,17 @@ class PerParticipantStreamingAudioInputManager:
                 duration_ms = transcriber_metadata.get("duration_ms", 0) if transcriber_metadata else 0
                 self.utterance_handler.handle_utterance(speaker_id=speaker_id, transcript_text=transcript_text, metadata=transcriber_metadata, duration_ms=duration_ms)
 
+            # The text so far, while the participant is still speaking (transcript.partial webhooks).
+            def deepgram_partial_callback(transcript_text, transcriber_metadata=None):
+                participant_data = self.get_participant_callback(speaker_id)
+                if not participant_data:
+                    return
+                trigger_webhook(
+                    webhook_trigger_type=WebhookTriggerTypes.TRANSCRIPT_PARTIAL,
+                    bot=self.bot,
+                    payload=partial_transcript_webhook_payload(participant_data, transcript_text, (transcriber_metadata or {}).get("timestamp_ms")),
+                )
+
             return DeepgramStreamingTranscriber(
                 deepgram_api_key=self.deepgram_api_key,
                 interim_results=True,
@@ -132,6 +146,7 @@ class PerParticipantStreamingAudioInputManager:
                 keyterms=self.bot.transcription_settings.deepgram_keyterms(),
                 endpointing=self.bot.transcription_settings.deepgram_endpointing(),
                 save_utterance_callback=None if callback else deepgram_save_utterance_callback,
+                partial_callback=None if callback or not self.bot.transcription_settings.deepgram_partial_webhooks() else deepgram_partial_callback,
                 redaction_settings=self.bot.transcription_settings.deepgram_redaction_settings(),
                 replace_settings=self.bot.transcription_settings.deepgram_replace_settings(),
                 mip_opt_out=self.bot.transcription_settings.deepgram_mip_opt_out(),

@@ -271,6 +271,7 @@ TRANSCRIPTION_SETTINGS_SCHEMA = {
                 "replace": {"type": "array", "items": {"type": "string"}, "description": "Array of terms to find and replace in the transcript. Each string should be in the format 'term_to_find:replacement_term' (e.g., 'kpis:Key Performance Indicators'). See here for details: https://developers.deepgram.com/docs/find-and-replace"},
                 "use_eu_server": {"type": "boolean", "description": "Whether to use the EU server for transcription. Defaults to false."},
                 "streaming": {"type": "boolean", "description": "Transcribe in real time over a streaming connection, one per participant. Each utterance is saved and sent as a transcript.update webhook as soon as Deepgram detects the end of speech, instead of after the audio is uploaded. Implied when callback is set. Defaults to false."},
+                "partial_webhooks": {"type": "boolean", "description": "Streaming only: also send the text of an utterance while it is being spoken, as transcript.partial webhooks (at most every 250 ms per participant, only when the text changed). Each is replaced by the final transcript.update. Defaults to false."},
                 "endpointing": {"type": "integer", "minimum": 10, "maximum": 5000, "description": "Streaming only: milliseconds of silence after which Deepgram ends an utterance. Defaults to Deepgram's default (10 ms). See https://developers.deepgram.com/docs/endpointing"},
             },
             "additionalProperties": False,
@@ -1234,8 +1235,8 @@ class CreateAsyncTranscriptionSerializer(serializers.Serializer):
         if value.get("deepgram", {}).get("callback"):
             raise serializers.ValidationError({"transcription_settings": "Deepgram callback is not available for async transcription."})
 
-        if value.get("deepgram", {}).get("streaming") or value.get("deepgram", {}).get("endpointing"):
-            raise serializers.ValidationError({"transcription_settings": "Deepgram streaming and endpointing are not available for async transcription."})
+        if value.get("deepgram", {}).get("streaming") or value.get("deepgram", {}).get("endpointing") or value.get("deepgram", {}).get("partial_webhooks"):
+            raise serializers.ValidationError({"transcription_settings": "Deepgram streaming, endpointing and partial webhooks are not available for async transcription."})
 
         if ("custom_async" in value or "custom_async_v2" in value) and not os.getenv("CUSTOM_ASYNC_TRANSCRIPTION_URL"):
             raise serializers.ValidationError({"transcription_settings": "CUSTOM_ASYNC_TRANSCRIPTION_URL environment variable is not set. Please set the CUSTOM_ASYNC_TRANSCRIPTION_URL environment variable to the URL of your custom async transcription service."})

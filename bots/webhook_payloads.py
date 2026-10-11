@@ -17,6 +17,18 @@ def utterance_webhook_payload(utterance):
     }
 
 
+def partial_transcript_webhook_payload(participant_data, transcript, timestamp_ms):
+    """The text of an utterance still being spoken (transcript.partial); the final one comes as transcript.update."""
+    return {
+        "speaker_name": participant_data.get("participant_full_name"),
+        "speaker_uuid": participant_data.get("participant_uuid"),
+        "speaker_user_uuid": participant_data.get("participant_user_uuid"),
+        "speaker_is_host": participant_data.get("participant_is_host", False),
+        "timestamp_ms": timestamp_ms,
+        "transcription": {"transcript": transcript},
+    }
+
+
 def participant_event_webhook_payload(participant_event):
     return ParticipantEventSerializer(participant_event).data
 
